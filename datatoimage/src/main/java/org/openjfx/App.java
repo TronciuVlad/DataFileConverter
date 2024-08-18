@@ -3,10 +3,10 @@ package org.openjfx;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
-import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
@@ -16,16 +16,15 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-
 import javax.imageio.ImageIO;
 
 public class App extends Application {
 
-    private static final int width = 1920;
-    private static final int height = 2560;
+    private static final int width = 1536;
+    private static final int height = 2048;
 
     private ImageView imageView;
+    private BufferedImage currentImage;
 
     public static void main(String[] args) {
         launch(args);
@@ -33,7 +32,7 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("Data to Image Converter");
+        primaryStage.setTitle("SketchToolX");
 
         // ImageView for displaying the image
         imageView = new ImageView();
@@ -41,17 +40,31 @@ public class App extends Application {
         imageView.setFitHeight(600); // Adjust as needed
         imageView.setPreserveRatio(true);
 
-        // Buttons for browsing and saving
+        // Buttons for browsing, saving, rotating, and flipping
         Button browseButton = new Button("Browse File");
         browseButton.setOnAction(e -> browseFile(primaryStage));
 
         Button saveButton = new Button("Save PNG");
         saveButton.setOnAction(e -> savePng());
 
+        Button rotateLeftButton = new Button("Rotate Left");
+        rotateLeftButton.setOnAction(e -> rotateImage(-90));
+
+        Button rotateRightButton = new Button("Rotate Right");
+        rotateRightButton.setOnAction(e -> rotateImage(90));
+
+        Button flipVerticalButton = new Button("Flip Vertical");
+        flipVerticalButton.setOnAction(e -> flipImage(true));
+
+        Button flipHorizontalButton = new Button("Flip Horizontal");
+        flipHorizontalButton.setOnAction(e -> flipImage(false));
+
+        HBox buttonBox = new HBox(10, browseButton, saveButton, rotateLeftButton, rotateRightButton, flipVerticalButton, flipHorizontalButton);
+        buttonBox.setSpacing(10);
+
         BorderPane root = new BorderPane();
         root.setCenter(imageView);
-        root.setBottom(browseButton);
-        root.setRight(saveButton);
+        root.setBottom(buttonBox);
 
         Scene scene = new Scene(root, 900, 700);
         primaryStage.setScene(scene);
@@ -68,7 +81,7 @@ public class App extends Application {
     }
 
     private void convertToImage(Path filePath) {
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage img = new BufferedImage(width + 1, height + 1, BufferedImage.TYPE_INT_ARGB);
         try {
             byte[] data = Files.readAllBytes(filePath);
 
@@ -81,11 +94,13 @@ public class App extends Application {
                 a = toUnsignedInt(data[i + 3]);
 
                 p = (a << 24) | (r << 16) | (g << 8) | b;
-                x = (i / 4) % (width / 5 * 4);
-                y = (i / 4) / (width / 5 * 4);
+                x = (i / 4) % width;
+                y = (i / 4) / width;
 
                 img.setRGB(x, y, p);
             }
+
+            currentImage = img;
 
             // Save the image to a temporary file and display in the ImageView
             File tempFile = File.createTempFile("preview", ".png");
@@ -106,21 +121,77 @@ public class App extends Application {
         File file = fileChooser.showSaveDialog(null);
         if (file != null) {
             try {
-                // Convert the JavaFX Image to BufferedImage
-                Image image = imageView.getImage();
-                BufferedImage bufferedImage = new BufferedImage((int) image.getWidth(), (int) image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+                ImageIO.write(currentImage, "png", file);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
 
-                // Draw the JavaFX image onto the BufferedImage
-                for (int y = 0; y < image.getHeight(); y++) {
-                    for (int x = 0; x < image.getWidth(); x++) {
-                        int argb = image.getPixelReader().getArgb(x, y);
-                        bufferedImage.setRGB(x, y, argb);
+    private void rotateImage(int angle) {
+        if (currentImage != null) {
+            int newWidth = currentImage.getHeight();
+            int newHeight = currentImage.getWidth();
+
+            BufferedImage rotatedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
+
+            for (int y = 0; y < currentImage.getHeight(); y++) {
+                for (int x = 0; x < currentImage.getWidth(); x++) {
+                    int newX = 0;
+                    int newY = 0;
+                    switch (angle) {
+                        case 90:
+                            newX = y;
+                            newY = currentImage.getWidth() - 1 - x;
+                            break;
+                        case -90:
+                            newX = currentImage.getHeight() - 1 - y;
+                            newY = x;
+                            break;
+                    }
+                    rotatedImage.setRGB(newX, newY, currentImage.getRGB(x, y));
+                }
+            }
+
+            currentImage = rotatedImage;
+
+            // Save the rotated image to a temporary file and display in the ImageView
+            try {
+                File tempFile = File.createTempFile("rotatedPreview", ".png");
+                ImageIO.write(rotatedImage, "png", tempFile);
+                Image image = new Image(new FileInputStream(tempFile));
+                imageView.setImage(image);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void flipImage(boolean vertical) {
+        if (currentImage != null) {
+            int width = currentImage.getWidth();
+            int height = currentImage.getHeight();
+
+            BufferedImage flippedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    if (vertical) {
+                        flippedImage.setRGB(x, height - 1 - y, currentImage.getRGB(x, y));
+                    } else {
+                        flippedImage.setRGB(width - 1 - x, y, currentImage.getRGB(x, y));
                     }
                 }
+            }
 
-                // Save the BufferedImage to the chosen file
-                ImageIO.write(bufferedImage, "png", file);
+            currentImage = flippedImage;
 
+            // Save the flipped image to a temporary file and display in the ImageView
+            try {
+                File tempFile = File.createTempFile("flippedPreview", ".png");
+                ImageIO.write(flippedImage, "png", tempFile);
+                Image image = new Image(new FileInputStream(tempFile));
+                imageView.setImage(image);
             } catch (IOException e) {
                 e.printStackTrace();
             }
