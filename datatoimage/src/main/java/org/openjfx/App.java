@@ -1,8 +1,12 @@
 package org.openjfx;
 
 import javafx.application.Application;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
@@ -20,11 +24,12 @@ import javax.imageio.ImageIO;
 
 public class App extends Application {
 
-    private static final int width = 1536;
-    private static final int height = 2048;
+    private int width = 1536;
+    private int height = 2048;
 
     private ImageView imageView;
     private BufferedImage currentImage;
+    private byte[] originalImageData;
 
     public static void main(String[] args) {
         launch(args);
@@ -39,6 +44,38 @@ public class App extends Application {
         imageView.setFitWidth(800); // Adjust as needed
         imageView.setFitHeight(600); // Adjust as needed
         imageView.setPreserveRatio(true);
+
+        // TextFields for custom resolution
+        TextField widthField = new TextField(Integer.toString(width));
+        TextField heightField = new TextField(Integer.toString(height));
+
+        widthField.setPrefWidth(80);
+        heightField.setPrefWidth(80);
+
+        Label widthLabel = new Label("Width:");
+        Label heightLabel = new Label("Height:");
+
+        // Add listeners to update the resolution
+        ChangeListener<String> resolutionChangeListener = new ChangeListener<String>() {
+            @Override
+            public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
+                try {
+                    width = Integer.parseInt(widthField.getText());
+                    height = Integer.parseInt(heightField.getText());
+                    // Recalculate the image with the new resolution if data exists
+                    if (originalImageData != null) {
+                        convertToImage(originalImageData);
+                    }
+                } catch (NumberFormatException e) {
+                    // Handle invalid input gracefully
+                    widthField.setText(oldValue);
+                    heightField.setText(oldValue);
+                }
+            }
+        };
+
+        widthField.textProperty().addListener(resolutionChangeListener);
+        heightField.textProperty().addListener(resolutionChangeListener);
 
         // Buttons for browsing, saving, rotating, and flipping
         Button browseButton = new Button("Browse File");
@@ -59,7 +96,7 @@ public class App extends Application {
         Button flipHorizontalButton = new Button("Flip Horizontal");
         flipHorizontalButton.setOnAction(e -> flipImage(false));
 
-        HBox buttonBox = new HBox(10, browseButton, saveButton, rotateLeftButton, rotateRightButton, flipVerticalButton, flipHorizontalButton);
+        HBox buttonBox = new HBox(10, browseButton, saveButton, rotateLeftButton, rotateRightButton, flipVerticalButton, flipHorizontalButton, widthLabel, widthField, heightLabel, heightField);
         buttonBox.setSpacing(10);
 
         BorderPane root = new BorderPane();
@@ -76,33 +113,38 @@ public class App extends Application {
         fileChooser.setTitle("Open Data File");
         File file = fileChooser.showOpenDialog(stage);
         if (file != null) {
-            convertToImage(file.toPath());
+            try {
+                originalImageData = Files.readAllBytes(file.toPath());
+                convertToImage(originalImageData);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
-    private void convertToImage(Path filePath) {
-        BufferedImage img = new BufferedImage(width + 1, height + 1, BufferedImage.TYPE_INT_ARGB);
-        try {
-            byte[] data = Files.readAllBytes(filePath);
+    private void convertToImage(byte[] data) {
+        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int r, g, b, a, p, x, y;
 
-            int r, g, b, a, p, x, y;
+        for (int i = 0; i < data.length; i += 4) {
+            r = toUnsignedInt(data[i]);
+            g = toUnsignedInt(data[i + 1]);
+            b = toUnsignedInt(data[i + 2]);
+            a = toUnsignedInt(data[i + 3]);
 
-            for (int i = 0; i < data.length; i += 4) {
-                r = toUnsignedInt(data[i]);
-                g = toUnsignedInt(data[i + 1]);
-                b = toUnsignedInt(data[i + 2]);
-                a = toUnsignedInt(data[i + 3]);
+            p = (a << 24) | (r << 16) | (g << 8) | b;
+            x = (i / 4) % width;
+            y = (i / 4) / width;
 
-                p = (a << 24) | (r << 16) | (g << 8) | b;
-                x = (i / 4) % width;
-                y = (i / 4) / width;
-
+            if (x < width && y < height) {
                 img.setRGB(x, y, p);
             }
+        }
 
-            currentImage = img;
+        currentImage = img;
 
-            // Save the image to a temporary file and display in the ImageView
+        // Save the image to a temporary file and display in the ImageView
+        try {
             File tempFile = File.createTempFile("preview", ".png");
             ImageIO.write(img, "png", tempFile);
 
