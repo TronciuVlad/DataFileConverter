@@ -131,10 +131,13 @@ public class App extends Application {
         resetSizeButton.setAlignment(Pos.TOP_LEFT);
         rightBox.setPadding(new Insets(10));
 
-        HBox bottomBox = new HBox(10, rotateFlipBox, rightBox);
+        // Add a spacer (Region) to increase space between the left and right panels
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        HBox bottomBox = new HBox(10, rotateFlipBox, spacer, rightBox);
         bottomBox.setPadding(new Insets(10));
         bottomBox.setAlignment(Pos.BOTTOM_CENTER);
-        bottomBox.setSpacing(50);
 
         BorderPane root = new BorderPane();
         root.setTop(topBox);
