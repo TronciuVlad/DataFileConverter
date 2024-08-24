@@ -2,275 +2,152 @@ package org.openjfx;
 
 import javafx.application.Application;
 import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
-import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.stage.FileChooser;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
-
-import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import javax.imageio.ImageIO;
 
 public class App extends Application {
 
     private int width = 1536;
     private int height = 2048;
 
+    private final int MAX_RESOLUTION = 5000;  // Maximum allowed resolution
+    private final int DEFAULT_WIDTH = 1536;   // Default width
+    private final int DEFAULT_HEIGHT = 2048;  // Default height
+
     private ImageView imageView;
-    private BufferedImage currentImage;
-    private byte[] originalImageData;
-
-    private int rotationAngle = 0;  // To store the current rotation angle
-    private boolean flipVertical = false;  // To store the vertical flip state
-    private boolean flipHorizontal = false;  // To store the horizontal flip state
-
-    public static void main(String[] args) {
-        launch(args);
-    }
+    private ImageProcessor imageProcessor;
 
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("SketchToolX");
 
-        // ImageView for displaying the image
+        // Create a stack pane to hold the image view and apply border and background
         imageView = new ImageView();
-        imageView.setFitWidth(800); // Adjust as needed
-        imageView.setFitHeight(600); // Adjust as needed
+        imageView.setFitWidth(800);
+        imageView.setFitHeight(600);
         imageView.setPreserveRatio(true);
 
-        // TextFields for custom resolution
+        StackPane imageContainer = new StackPane();
+        imageContainer.getChildren().add(imageView);
+        imageContainer.setStyle("-fx-border-color: black; -fx-border-width: 1; -fx-background-color: lightgray;");
+        imageContainer.setPadding(new Insets(10)); // Add padding around the image container
+
+        imageProcessor = new ImageProcessor(imageView, width, height);
+
         TextField widthField = new TextField(Integer.toString(width));
         TextField heightField = new TextField(Integer.toString(height));
-
         widthField.setPrefWidth(80);
         heightField.setPrefWidth(80);
 
         Label widthLabel = new Label("Width:");
         Label heightLabel = new Label("Height:");
 
-        // Add listeners to update the resolution
-        ChangeListener<String> resolutionChangeListener = new ChangeListener<String>() {
-            @Override
-            public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
-                try {
-                    width = Integer.parseInt(widthField.getText());
-                    height = Integer.parseInt(heightField.getText());
-                    // Recalculate the image with the new resolution if data exists
-                    if (originalImageData != null) {
-                        convertToImage(originalImageData);
-                        applyTransformations();  // Reapply the transformations after recalculation
-                    }
-                } catch (NumberFormatException e) {
-                    // Handle invalid input gracefully
-                    widthField.setText(oldValue);
-                    heightField.setText(oldValue);
+        ChangeListener<String> resolutionChangeListener = (observable, oldValue, newValue) -> {
+            try {
+                int newWidth = Integer.parseInt(widthField.getText());
+                int newHeight = Integer.parseInt(heightField.getText());
+
+                if (newWidth > MAX_RESOLUTION) {
+                    widthField.setText(Integer.toString(MAX_RESOLUTION));
+                    newWidth = MAX_RESOLUTION;
                 }
+
+                if (newHeight > MAX_RESOLUTION) {
+                    heightField.setText(Integer.toString(MAX_RESOLUTION));
+                    newHeight = MAX_RESOLUTION;
+                }
+
+                width = newWidth;
+                height = newHeight;
+                imageProcessor.setResolution(width, height);
+            } catch (NumberFormatException e) {
+                widthField.setText(oldValue);
+                heightField.setText(oldValue);
             }
         };
 
         widthField.textProperty().addListener(resolutionChangeListener);
         heightField.textProperty().addListener(resolutionChangeListener);
 
-        // Buttons for browsing, saving, rotating, and flipping
         Button browseButton = new Button("Browse File");
-        browseButton.setOnAction(e -> browseFile(primaryStage));
+        browseButton.setOnAction(e -> imageProcessor.browseFile(primaryStage));
 
         Button saveButton = new Button("Save PNG");
-        saveButton.setOnAction(e -> savePng());
+        saveButton.setOnAction(e -> imageProcessor.savePng());
 
         Button rotateLeftButton = new Button("Rotate Left");
-        rotateLeftButton.setOnAction(e -> {
-            rotationAngle -= 90;
-            applyTransformations();
-        });
+        rotateLeftButton.setOnAction(e -> imageProcessor.rotateLeft());
 
         Button rotateRightButton = new Button("Rotate Right");
-        rotateRightButton.setOnAction(e -> {
-            rotationAngle += 90;
-            applyTransformations();
-        });
-
-        Button flipVerticalButton = new Button("Flip Vertical");
-        flipVerticalButton.setOnAction(e -> {
-            flipVertical = !flipVertical;
-            applyTransformations();
-        });
+        rotateRightButton.setOnAction(e -> imageProcessor.rotateRight());
 
         Button flipHorizontalButton = new Button("Flip Horizontal");
-        flipHorizontalButton.setOnAction(e -> {
-            flipHorizontal = !flipHorizontal;
-            applyTransformations();
+        flipHorizontalButton.setOnAction(e -> imageProcessor.flipHorizontal());
+
+        Button flipVerticalButton = new Button("Flip Vertical");
+        flipVerticalButton.setOnAction(e -> imageProcessor.flipVertical());
+
+        // Reset Size Button
+        Button resetSizeButton = new Button("Reset Size");
+        resetSizeButton.setOnAction(e -> {
+            width = DEFAULT_WIDTH;
+            height = DEFAULT_HEIGHT;
+            widthField.setText(Integer.toString(DEFAULT_WIDTH));
+            heightField.setText(Integer.toString(DEFAULT_HEIGHT));
+            imageProcessor.setResolution(width, height);
         });
 
-        HBox buttonBox = new HBox(10, browseButton, saveButton, rotateLeftButton, rotateRightButton, flipVerticalButton, flipHorizontalButton, widthLabel, widthField, heightLabel, heightField);
-        buttonBox.setSpacing(10);
+        // Layout for the top left (Browse and Save)
+        HBox topBox = new HBox(10, browseButton, saveButton);
+        topBox.setAlignment(Pos.CENTER_LEFT);
+        topBox.setPadding(new Insets(10));
+
+        // Layout for the left bottom side (Rotate and Flip) in a 2x2 grid
+        VBox rotateFlipBox = new VBox(10, 
+            new HBox(10, rotateLeftButton, rotateRightButton), 
+            new HBox(10, flipHorizontalButton, flipVerticalButton)
+        );
+        rotateFlipBox.setPadding(new Insets(10));
+        rotateFlipBox.setAlignment(Pos.TOP_LEFT);
+
+        // Layout for the right side (Width, Height, and Reset)
+        HBox sizeFields = new HBox(10, widthLabel, widthField, heightLabel, heightField);
+        sizeFields.setAlignment(Pos.CENTER_RIGHT);
+
+        VBox rightBox = new VBox(10, sizeFields, resetSizeButton);
+        rightBox.setAlignment(Pos.TOP_RIGHT);
+        resetSizeButton.setAlignment(Pos.TOP_LEFT);
+        rightBox.setPadding(new Insets(10));
+
+        HBox bottomBox = new HBox(10, rotateFlipBox, rightBox);
+        bottomBox.setPadding(new Insets(10));
+        bottomBox.setAlignment(Pos.BOTTOM_CENTER);
+        bottomBox.setSpacing(50);
 
         BorderPane root = new BorderPane();
-        root.setCenter(imageView);
-        root.setBottom(buttonBox);
+        root.setTop(topBox);
+        root.setCenter(imageContainer);
+        root.setBottom(bottomBox);
+        root.setPadding(new Insets(15));
 
-        Scene scene = new Scene(root, 900, 700);
+        Scene scene = new Scene(root, 1000, 800);
         primaryStage.setScene(scene);
         primaryStage.show();
     }
 
-    private void browseFile(Stage stage) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Open Data File");
-        File file = fileChooser.showOpenDialog(stage);
-        if (file != null) {
-            try {
-                originalImageData = Files.readAllBytes(file.toPath());
-                convertToImage(originalImageData);
-                applyTransformations();  // Apply transformations after loading a new image
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void convertToImage(byte[] data) {
-        BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        int r, g, b, a, p, x, y;
-
-        for (int i = 0; i < data.length; i += 4) {
-            r = toUnsignedInt(data[i]);
-            g = toUnsignedInt(data[i + 1]);
-            b = toUnsignedInt(data[i + 2]);
-            a = toUnsignedInt(data[i + 3]);
-
-            p = (a << 24) | (r << 16) | (g << 8) | b;
-            x = (i / 4) % width;
-            y = (i / 4) / width;
-
-            if (x < width && y < height) {
-                img.setRGB(x, y, p);
-            }
-        }
-
-        currentImage = img;
-
-        // Save the image to a temporary file and display in the ImageView
-        try {
-            File tempFile = File.createTempFile("preview", ".png");
-            ImageIO.write(img, "png", tempFile);
-
-            Image image = new Image(new FileInputStream(tempFile));
-            imageView.setImage(image);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void applyTransformations() {
-        if (currentImage != null) {
-            BufferedImage transformedImage = currentImage;
-
-            // Apply rotation
-            int angle = (rotationAngle % 360 + 360) % 360;  // Normalize the angle
-            if (angle == 90 || angle == 270) {
-                int newWidth = transformedImage.getHeight();
-                int newHeight = transformedImage.getWidth();
-                BufferedImage rotatedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
-
-                for (int y = 0; y < transformedImage.getHeight(); y++) {
-                    for (int x = 0; x < transformedImage.getWidth(); x++) {
-                        int newX = angle == 90 ? y : transformedImage.getHeight() - 1 - y;
-                        int newY = angle == 90 ? transformedImage.getWidth() - 1 - x : x;
-                        rotatedImage.setRGB(newX, newY, transformedImage.getRGB(x, y));
-                    }
-                }
-
-                transformedImage = rotatedImage;
-            } else if (angle == 180) {
-                int width = transformedImage.getWidth();
-                int height = transformedImage.getHeight();
-                BufferedImage rotatedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-
-                for (int y = 0; y < height; y++) {
-                    for (int x = 0; x < width; x++) {
-                        rotatedImage.setRGB(width - 1 - x, height - 1 - y, transformedImage.getRGB(x, y));
-                    }
-                }
-
-                transformedImage = rotatedImage;
-            }
-
-            // Apply flipping
-            if (flipVertical) {
-                transformedImage = flipImageVertically(transformedImage);
-            }
-            if (flipHorizontal) {
-                transformedImage = flipImageHorizontally(transformedImage);
-            }
-
-            // Display the transformed image
-            try {
-                File tempFile = File.createTempFile("transformedPreview", ".png");
-                ImageIO.write(transformedImage, "png", tempFile);
-                Image image = new Image(new FileInputStream(tempFile));
-                imageView.setImage(image);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private BufferedImage flipImageVertically(BufferedImage img) {
-        int width = img.getWidth();
-        int height = img.getHeight();
-        BufferedImage flippedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                flippedImage.setRGB(x, height - 1 - y, img.getRGB(x, y));
-            }
-        }
-
-        return flippedImage;
-    }
-
-    private BufferedImage flipImageHorizontally(BufferedImage img) {
-        int width = img.getWidth();
-        int height = img.getHeight();
-        BufferedImage flippedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                flippedImage.setRGB(width - 1 - x, y, img.getRGB(x, y));
-            }
-        }
-
-        return flippedImage;
-    }
-
-    private void savePng() {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Save PNG");
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PNG Files", "*.png")); // Ensures saving as PNG
-        File file = fileChooser.showSaveDialog(null);
-        if (file != null) {
-            try {
-                ImageIO.write(currentImage, "png", file);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private int toUnsignedInt(byte x) {
-        return ((int) x) & 0xff;
+    public static void main(String[] args) {
+        launch(args);
     }
 }

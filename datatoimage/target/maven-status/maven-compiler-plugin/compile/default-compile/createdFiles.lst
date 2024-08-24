@@ -1,5 +1,6 @@
-org\openjfx\App$1.class
 module-info.class
+org\openjfx\ImageProcessor.class
+org\openjfx\ImageTransformation.class
 org\openjfx\App.class
 org\openjfx\SystemInfo.class
 org\openjfx\Main.class
