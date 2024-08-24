@@ -31,6 +31,10 @@ public class App extends Application {
     private BufferedImage currentImage;
     private byte[] originalImageData;
 
+    private int rotationAngle = 0;  // To store the current rotation angle
+    private boolean flipVertical = false;  // To store the vertical flip state
+    private boolean flipHorizontal = false;  // To store the horizontal flip state
+
     public static void main(String[] args) {
         launch(args);
     }
@@ -65,6 +69,7 @@ public class App extends Application {
                     // Recalculate the image with the new resolution if data exists
                     if (originalImageData != null) {
                         convertToImage(originalImageData);
+                        applyTransformations();  // Reapply the transformations after recalculation
                     }
                 } catch (NumberFormatException e) {
                     // Handle invalid input gracefully
@@ -85,16 +90,28 @@ public class App extends Application {
         saveButton.setOnAction(e -> savePng());
 
         Button rotateLeftButton = new Button("Rotate Left");
-        rotateLeftButton.setOnAction(e -> rotateImage(-90));
+        rotateLeftButton.setOnAction(e -> {
+            rotationAngle -= 90;
+            applyTransformations();
+        });
 
         Button rotateRightButton = new Button("Rotate Right");
-        rotateRightButton.setOnAction(e -> rotateImage(90));
+        rotateRightButton.setOnAction(e -> {
+            rotationAngle += 90;
+            applyTransformations();
+        });
 
         Button flipVerticalButton = new Button("Flip Vertical");
-        flipVerticalButton.setOnAction(e -> flipImage(true));
+        flipVerticalButton.setOnAction(e -> {
+            flipVertical = !flipVertical;
+            applyTransformations();
+        });
 
         Button flipHorizontalButton = new Button("Flip Horizontal");
-        flipHorizontalButton.setOnAction(e -> flipImage(false));
+        flipHorizontalButton.setOnAction(e -> {
+            flipHorizontal = !flipHorizontal;
+            applyTransformations();
+        });
 
         HBox buttonBox = new HBox(10, browseButton, saveButton, rotateLeftButton, rotateRightButton, flipVerticalButton, flipHorizontalButton, widthLabel, widthField, heightLabel, heightField);
         buttonBox.setSpacing(10);
@@ -116,6 +133,7 @@ public class App extends Application {
             try {
                 originalImageData = Files.readAllBytes(file.toPath());
                 convertToImage(originalImageData);
+                applyTransformations();  // Apply transformations after loading a new image
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -156,6 +174,88 @@ public class App extends Application {
         }
     }
 
+    private void applyTransformations() {
+        if (currentImage != null) {
+            BufferedImage transformedImage = currentImage;
+
+            // Apply rotation
+            int angle = (rotationAngle % 360 + 360) % 360;  // Normalize the angle
+            if (angle == 90 || angle == 270) {
+                int newWidth = transformedImage.getHeight();
+                int newHeight = transformedImage.getWidth();
+                BufferedImage rotatedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
+
+                for (int y = 0; y < transformedImage.getHeight(); y++) {
+                    for (int x = 0; x < transformedImage.getWidth(); x++) {
+                        int newX = angle == 90 ? y : transformedImage.getHeight() - 1 - y;
+                        int newY = angle == 90 ? transformedImage.getWidth() - 1 - x : x;
+                        rotatedImage.setRGB(newX, newY, transformedImage.getRGB(x, y));
+                    }
+                }
+
+                transformedImage = rotatedImage;
+            } else if (angle == 180) {
+                int width = transformedImage.getWidth();
+                int height = transformedImage.getHeight();
+                BufferedImage rotatedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        rotatedImage.setRGB(width - 1 - x, height - 1 - y, transformedImage.getRGB(x, y));
+                    }
+                }
+
+                transformedImage = rotatedImage;
+            }
+
+            // Apply flipping
+            if (flipVertical) {
+                transformedImage = flipImageVertically(transformedImage);
+            }
+            if (flipHorizontal) {
+                transformedImage = flipImageHorizontally(transformedImage);
+            }
+
+            // Display the transformed image
+            try {
+                File tempFile = File.createTempFile("transformedPreview", ".png");
+                ImageIO.write(transformedImage, "png", tempFile);
+                Image image = new Image(new FileInputStream(tempFile));
+                imageView.setImage(image);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private BufferedImage flipImageVertically(BufferedImage img) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+        BufferedImage flippedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                flippedImage.setRGB(x, height - 1 - y, img.getRGB(x, y));
+            }
+        }
+
+        return flippedImage;
+    }
+
+    private BufferedImage flipImageHorizontally(BufferedImage img) {
+        int width = img.getWidth();
+        int height = img.getHeight();
+        BufferedImage flippedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                flippedImage.setRGB(width - 1 - x, y, img.getRGB(x, y));
+            }
+        }
+
+        return flippedImage;
+    }
+
     private void savePng() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Save PNG");
@@ -164,76 +264,6 @@ public class App extends Application {
         if (file != null) {
             try {
                 ImageIO.write(currentImage, "png", file);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void rotateImage(int angle) {
-        if (currentImage != null) {
-            int newWidth = currentImage.getHeight();
-            int newHeight = currentImage.getWidth();
-
-            BufferedImage rotatedImage = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_ARGB);
-
-            for (int y = 0; y < currentImage.getHeight(); y++) {
-                for (int x = 0; x < currentImage.getWidth(); x++) {
-                    int newX = 0;
-                    int newY = 0;
-                    switch (angle) {
-                        case 90:
-                            newX = y;
-                            newY = currentImage.getWidth() - 1 - x;
-                            break;
-                        case -90:
-                            newX = currentImage.getHeight() - 1 - y;
-                            newY = x;
-                            break;
-                    }
-                    rotatedImage.setRGB(newX, newY, currentImage.getRGB(x, y));
-                }
-            }
-
-            currentImage = rotatedImage;
-
-            // Save the rotated image to a temporary file and display in the ImageView
-            try {
-                File tempFile = File.createTempFile("rotatedPreview", ".png");
-                ImageIO.write(rotatedImage, "png", tempFile);
-                Image image = new Image(new FileInputStream(tempFile));
-                imageView.setImage(image);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void flipImage(boolean vertical) {
-        if (currentImage != null) {
-            int width = currentImage.getWidth();
-            int height = currentImage.getHeight();
-
-            BufferedImage flippedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    if (vertical) {
-                        flippedImage.setRGB(x, height - 1 - y, currentImage.getRGB(x, y));
-                    } else {
-                        flippedImage.setRGB(width - 1 - x, y, currentImage.getRGB(x, y));
-                    }
-                }
-            }
-
-            currentImage = flippedImage;
-
-            // Save the flipped image to a temporary file and display in the ImageView
-            try {
-                File tempFile = File.createTempFile("flippedPreview", ".png");
-                ImageIO.write(flippedImage, "png", tempFile);
-                Image image = new Image(new FileInputStream(tempFile));
-                imageView.setImage(image);
             } catch (IOException e) {
                 e.printStackTrace();
             }
